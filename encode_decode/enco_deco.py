@@ -90,6 +90,22 @@ for i, (input_text, target_text) in enumerate(zip(input_texts, target_texts)):
 
 
 
+#对于与上面这段代码的理解，如果对于这样一句话 input_text="ABCD",target_text='abcd'
+
+
+"""
+A-->a
+encoder_input_data=A
+decoder_input_data=a
+
+decoder_target_data=b
+
+输入encoder_input_data和decoder_input_data一一对应
+输出的是decoder下一个字符
+"""
+
+
+
 
 #########################################################################################################################################################
 # 定义训练编码器
@@ -161,6 +177,10 @@ model.fit([encoder_input_data, decoder_input_data], decoder_target_data,
 model.save('s2s.h5')
 
 
+import netron
+netron.start("s2s.h5")
+
+
 # 定义推断编码器  根据输入序列得到隐藏状态和细胞状态的路径图，得到模型，使用的输入到输出之间所有层的权重，与tf的预测签名一样
 ####################################################################################################################
 encoder_model = Model(encoder_inputs, encoder_states)                #编码模型 ，注意输出是  encoder_states = [state_h, state_c]  
@@ -169,28 +189,34 @@ encoder_model = Model(encoder_inputs, encoder_states)                #编码模�
 
 encoder_model.save('encoder_model.h5')
 
+import netron
+netron.start('encoder_model.h5')
 
 
-#定义解码模型
 
 #解码的隐藏层
-decoder_state_input_h = Input(shape=(latent_dim,))
+decoder_state_input_h = Input(shape=(latent_dim,),name='decoder_state_input_h')
 #解码的候选门
-decoder_state_input_c = Input(shape=(latent_dim,))
+decoder_state_input_c = Input(shape=(latent_dim,),name='decoder_state_input_c')
 #解码的输入状态
 decoder_states_inputs = [decoder_state_input_h, decoder_state_input_c]
 
 
-decoder_outputs, state_hd, state_cd = decoder_lstm(decoder_inputs, initial_state=decoder_states_inputs)
+decoder_outputsd, state_hd, state_cd = decoder_lstm(decoder_inputs, initial_state=decoder_states_inputs)
 
-decoder_states = [state_hd, state_cd]
-decoder_outputs = decoder_dense(decoder_outputs)
+decoder_statesd = [state_hd, state_cd]
+decoder_outputsd1 = decoder_dense(decoder_outputsd)
 decoder_model = Model(
     [decoder_inputs] + decoder_states_inputs,
-    [decoder_outputs] + decoder_states)
+    [decoder_outputsd1] + decoder_statesd)
 # 反向查找令牌索引，将序列解码回可读的内容。
 
 decoder_model.save('decoder_model.h5')
+
+
+import netron
+netron.start('decoder_model.h5')
+
 reverse_input_char_index = dict(
     (i, char) for char, i in input_token_index.items())
 reverse_target_char_index = dict(
@@ -204,6 +230,15 @@ def decode_sequence(input_seq):
     # 生成长度为1的空目标序列
     target_seq = np.zeros((1, 1, num_decoder_tokens))
     # 用起始字符填充目标序列的第一个字符。
+    """
+    我们可以想一想为什么要用下面这段代码
+    当输入input_seq 之后，就得到了encoder_states ，在之后一直共享这个数值
+    然后就像解纽扣那样，先找到第一个纽扣，就是'\t'，在target_text中'\t'就是第一个字符
+    【'\t'，states_value】-->下一个字符 c1
+    【'c1'，states_value】-->下一个字符 c2
+     ........
+     while循环一直到最后
+    """
     target_seq[0, 0, target_token_index['\t']] = 1.
     # 对一批序列的抽样循环(为了简化，这里我们假设批大小为1)
     stop_condition = False
